@@ -12,9 +12,16 @@ jobs:
     - uses: actions/checkout@v3.3.0
     - name: build
       run: ./build/build-unix.sh
+    - name: read version num
+      id: rv
+      uses: shaneapowell/github-tweak-the-json@v1
+      with:
+        action: read
+        filename: ./plugin/manifest.json
+        field: version
     - name: release
       uses: johnwbyrd/update-release@v1.0.0
       with:
         token: ${{secrets.GITHUB_TOKEN}}
         files: ./elephant.fda
-        release: latest
+        release: ${{ steps.rv.outputs.value }}
