@@ -20,8 +20,9 @@ jobs:
         filename: ./plugin/manifest.json
         field: version
     - name: release
-      uses: johnwbyrd/update-release@v1.0.0
+      uses: ncipollo/release-action@v1
       with:
-        token: ${{secrets.GITHUB_TOKEN}}
-        files: ./elephant.fda
-        release: ${{ steps.rv.outputs.value }}
+        allowUpdates: true
+        artifacts: "elephant.fda"
+        tag: ${{ steps.rv.outputs.value }}
+        token: ${{ secrets.GITHUB_TOKEN }}
