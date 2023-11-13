@@ -1556,12 +1556,7 @@ class YoutubeDLRedirectHandler(urllib.request.HTTPRedirectHandler):
 
         new_method = req.get_method()
         new_data = req.data
-
-        # Technically the Cookie header should be in unredirected_hdrs,
-        # however in practice some may set it in normal headers anyway.
-        # We will remove it here to prevent any leaks.
-        remove_headers = ['Cookie']
-
+        remove_headers = []
         # A 303 must either use GET or HEAD for subsequent request
         # https://datatracker.ietf.org/doc/html/rfc7231#section-6.4.4
         if code == 303 and req.get_method() != 'HEAD':
@@ -1578,7 +1573,7 @@ class YoutubeDLRedirectHandler(urllib.request.HTTPRedirectHandler):
             new_data = None
             remove_headers.extend(['Content-Length', 'Content-Type'])
 
-        new_headers = {k: v for k, v in req.headers.items() if k.title() not in remove_headers}
+        new_headers = {k: v for k, v in req.headers.items() if k.lower() not in remove_headers}
 
         return urllib.request.Request(
             newurl, headers=new_headers, origin_req_host=req.origin_req_host,
@@ -3512,8 +3507,7 @@ def get_compatible_ext(*, vcodecs, acodecs, vexts, aexts, preferences=None):
         },
     }
 
-    sanitize_codec = functools.partial(
-        try_get, getter=lambda x: x[0].split('.')[0].replace('0', '').lower())
+    sanitize_codec = functools.partial(try_get, getter=lambda x: x[0].split('.')[0].replace('0', ''))
     vcodec, acodec = sanitize_codec(vcodecs), sanitize_codec(acodecs)
 
     for ext in preferences or COMPATIBLE_CODECS.keys():
@@ -3759,10 +3753,12 @@ def match_filter_func(filters, breaking_filters=None):
 
 
 class download_range_func:
-    def __init__(self, chapters, ranges, from_info=False):
-        self.chapters, self.ranges, self.from_info = chapters, ranges, from_info
+    def __init__(self, chapters, ranges):
+        self.chapters, self.ranges = chapters, ranges
 
     def __call__(self, info_dict, ydl):
+        if not self.ranges and not self.chapters:
+            yield {}
 
         warning = ('There are no chapters matching the regex' if info_dict.get('chapters')
                    else 'Cannot match chapters since chapter information is unavailable')
@@ -3774,23 +3770,7 @@ class download_range_func:
         if self.chapters and warning:
             ydl.to_screen(f'[info] {info_dict["id"]}: {warning}')
 
-        for start, end in self.ranges or []:
-            yield {
-                'start_time': self._handle_negative_timestamp(start, info_dict),
-                'end_time': self._handle_negative_timestamp(end, info_dict),
-            }
-
-        if self.from_info and (info_dict.get('start_time') or info_dict.get('end_time')):
-            yield {
-                'start_time': info_dict.get('start_time') or 0,
-                'end_time': info_dict.get('end_time') or float('inf'),
-            }
-        elif not self.ranges and not self.chapters:
-            yield {}
-
-    @staticmethod
-    def _handle_negative_timestamp(time, info):
-        return max(info['duration'] + time, 0) if info.get('duration') and time < 0 else time
+        yield from ({'start_time': start, 'end_time': end} for start, end in self.ranges or [])
 
     def __eq__(self, other):
         return (isinstance(other, download_range_func)
@@ -5118,7 +5098,7 @@ def format_field(obj, field=None, template='%s', ignore=NO_DEFAULT, default='', 
 
 
 def clean_podcast_url(url):
-    url = re.sub(r'''(?x)
+    return re.sub(r'''(?x)
         (?:
             (?:
                 chtbl\.com/track|
@@ -5132,7 +5112,6 @@ def clean_podcast_url(url):
                 st\.fm # https://podsights.com/docs/
             )/e
         )/''', '', url)
-    return re.sub(r'^\w+://(\w+://)', r'\1', url)
 
 
 _HEX_TABLE = '0123456789abcdef'
@@ -5744,9 +5723,9 @@ class FormatSorter:
         'source': {'convert': 'float', 'field': 'source_preference', 'default': -1},
 
         'codec': {'type': 'combined', 'field': ('vcodec', 'acodec')},
-        'br': {'type': 'multiple', 'field': ('tbr', 'vbr', 'abr'), 'convert': 'float_none',
+        'br': {'type': 'multiple', 'field': ('tbr', 'vbr', 'abr'),
                'function': lambda it: next(filter(None, it), None)},
-        'size': {'type': 'multiple', 'field': ('filesize', 'fs_approx'), 'convert': 'bytes',
+        'size': {'type': 'multiple', 'field': ('filesize', 'fs_approx'),
                  'function': lambda it: next(filter(None, it), None)},
         'ext': {'type': 'combined', 'field': ('vext', 'aext')},
         'res': {'type': 'multiple', 'field': ('height', 'width'),

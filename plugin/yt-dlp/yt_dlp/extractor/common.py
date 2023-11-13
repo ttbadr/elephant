@@ -26,7 +26,6 @@ from ..compat import functools  # isort: split
 from ..compat import compat_etree_fromstring, compat_expanduser, compat_os_name
 from ..cookies import LenientSimpleCookie
 from ..downloader.f4m import get_base_url, remove_encrypted_media
-from ..downloader.hls import HlsFD
 from ..utils import (
     IDENTITY,
     JSON_LD_RE,
@@ -225,8 +224,7 @@ class InfoExtractor:
                                  width : height ratio as float.
                     * no_resume  The server does not support resuming the
                                  (HTTP or RTMP) download. Boolean.
-                    * has_drm    True if the format has DRM and cannot be downloaded.
-                                 'maybe' if the format may have DRM and has to be tested before download.
+                    * has_drm    The format has DRM and cannot be downloaded. Boolean
                     * extra_param_to_segment_url  A query string to append to each
                                  fragment's URL, or to update each existing query string
                                  with. Only applied by the native HLS/DASH downloaders.
@@ -477,8 +475,8 @@ class InfoExtractor:
 
 
     Subclasses of this should also be added to the list of extractors and
-    should define _VALID_URL as a regexp or a Sequence of regexps, and
-    re-define the _real_extract() and (optionally) _real_initialize() methods.
+    should define a _VALID_URL regexp and, re-define the _real_extract() and
+    (optionally) _real_initialize() methods.
 
     Subclasses may also override suitable() if necessary, but ensure the function
     signature is preserved and that this function imports everything it needs
@@ -568,8 +566,8 @@ class InfoExtractor:
         # we have cached the regexp for *this* class, whereas getattr would also
         # match the superclass
         if '_VALID_URL_RE' not in cls.__dict__:
-            cls._VALID_URL_RE = tuple(map(re.compile, variadic(cls._VALID_URL)))
-        return next(filter(None, (regex.match(url) for regex in cls._VALID_URL_RE)), None)
+            cls._VALID_URL_RE = re.compile(cls._VALID_URL)
+        return cls._VALID_URL_RE.match(url)
 
     @classmethod
     def suitable(cls, url):
@@ -1981,7 +1979,11 @@ class InfoExtractor:
             errnote=None, fatal=True, data=None, headers={}, query={},
             video_id=None):
         formats, subtitles = [], {}
-        has_drm = HlsFD._has_drm(m3u8_doc)
+
+        has_drm = re.search('|'.join([
+            r'#EXT-X-FAXS-CM:',  # Adobe Flash Access
+            r'#EXT-X-(?:SESSION-)?KEY:.*?URI="skd://',  # Apple FairPlay
+        ]), m3u8_doc)
 
         def format_url(url):
             return url if re.match(r'^https?://', url) else urllib.parse.urljoin(m3u8_url, url)
